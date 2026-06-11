@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
+import { Camera, Check, LoaderCircle, RotateCcw, X } from 'lucide-react'
+import { useOCR } from './hooks/useOCR'
+import { scanWithText, scanWithImage } from './services/scanService'
 
 type Product = {
   id: string
@@ -23,6 +26,38 @@ type AlertEntry = {
 type AlertLedger = Record<string, AlertStage[]>
 type FilterMode = 'all' | 'attention' | 'today' | 'overdue' | 'fresh'
 type SortMode = 'urgency' | 'name' | 'quantity'
+type ScanStep = 'product' | 'expiry'
+
+type ScanProductData = {
+  brand: string | null
+  product: string | null
+}
+
+type ScanExpiryData = {
+  raw: string
+  iso: string
+  display: string
+  isExpired: boolean
+  daysUntilExpiry: number
+}
+
+type ScanResponse =
+  | {
+      success: true
+      scanState: 'product'
+      data: ScanProductData | null
+      message?: string
+    }
+  | {
+      success: true
+      scanState: 'expiry'
+      data: { expiry: ScanExpiryData } | null
+      message?: string
+    }
+  | {
+      success: false
+      error: string
+    }
 
 const STORAGE_KEY = 'nudge.products'
 const ALERT_STORAGE_KEY = 'nudge.alerts'
@@ -156,8 +191,26 @@ const quickDateOptions = [
 
 const escapeCsvValue = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`
 
+const expiryRawToInputDate = (rawDate: string) => {
+  const [day, month, year] = rawDate.split('/')
+  return `${year}-${month}-${day}`
+}
+
+const getScannedProductName = ({ brand, product }: ScanProductData) => {
+  const normalizedBrand = brand?.trim() || ''
+  const normalizedProduct = product?.trim() || ''
+
+  if (!normalizedBrand) return normalizedProduct
+  if (!normalizedProduct) return normalizedBrand
+  if (normalizedProduct.toLowerCase().includes(normalizedBrand.toLowerCase())) return normalizedProduct
+
+  return `${normalizedBrand} ${normalizedProduct}`
+}
+
 const App = () => {
+  const { extractText } = useOCR()
   const [products, setProducts] = useState<Product[]>(readStoredProducts)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
   const [scanValue, setScanValue] = useState('')
   const [expiryDate, setExpiryDate] = useState('')
   const [category, setCategory] = useState(categories[0])
@@ -173,6 +226,13 @@ const App = () => {
   const [sortMode, setSortMode] = useState<SortMode>('urgency')
   const [formMessage, setFormMessage] = useState('')
   const [copiedList, setCopiedList] = useState(false)
+  const [scannerOpen, setScannerOpen] = useState(false)
+  const [scanStep, setScanStep] = useState<ScanStep>('product')
+  const [scanImage, setScanImage] = useState<File | null>(null)
+  const [scanPreview, setScanPreview] = useState('')
+  const [scannedProduct, setScannedProduct] = useState<ScanProductData | null>(null)
+  const [scanError, setScanError] = useState('')
+  const [scanLoading, setScanLoading] = useState(false)
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(products))
@@ -181,6 +241,77 @@ const App = () => {
   useEffect(() => {
     window.localStorage.setItem(ALERT_STORAGE_KEY, JSON.stringify(alertLedger))
   }, [alertLedger])
+
+  useEffect(
+    () => () => {
+      if (scanPreview) URL.revokeObjectURL(scanPreview)
+    },
+    [scanPreview],
+  )
+
+  useEffect(() => {
+    document.body.style.overflow = scannerOpen ? 'hidden' : ''
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [scannerOpen])
+
+  useEffect(() => {
+    let activeStream: MediaStream | null = null
+
+    const startCamera = async () => {
+      try {
+        const constraints: MediaStreamConstraints = {
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        }
+        const s = await navigator.mediaDevices.getUserMedia(constraints)
+        activeStream = s
+        if (videoRef.current) {
+          videoRef.current.srcObject = s
+        }
+      } catch (err) {
+        console.error('Camera access error:', err)
+        setScanError('Could not access camera. Ensure you are using HTTPS and have granted camera permissions.')
+      }
+    }
+
+    if (scannerOpen && !scanPreview) {
+      startCamera()
+    }
+
+    return () => {
+      if (activeStream) {
+        activeStream.getTracks().forEach(track => track.stop())
+      }
+    }
+  }, [scannerOpen, scanPreview])
+
+  const captureFrame = () => {
+    if (!videoRef.current) return
+    const video = videoRef.current
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth || 640
+    canvas.height = video.videoHeight || 480
+    const ctx = canvas.getContext('2d')
+    if (ctx) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            const file = new File([blob], `${scanStep}.jpg`, { type: 'image/jpeg' })
+            handleScanImageChange(file)
+          }
+        },
+        'image/jpeg',
+        0.92
+      )
+    }
+  }
 
   const computedProducts = useMemo(
     () =>
@@ -405,6 +536,128 @@ const App = () => {
     setQuantity('6')
   }
 
+  const clearScanImage = () => {
+    if (scanPreview) URL.revokeObjectURL(scanPreview)
+    setScanImage(null)
+    setScanPreview('')
+  }
+
+  const resetScanner = () => {
+    clearScanImage()
+    setScanStep('product')
+    setScannedProduct(null)
+    setScanError('')
+    setScanLoading(false)
+  }
+
+  const openScanner = () => {
+    resetScanner()
+    setScannerOpen(true)
+  }
+
+  const closeScanner = () => {
+    if (scanLoading) return
+    setScannerOpen(false)
+    resetScanner()
+  }
+
+  const handleScanImageChange = (file: File | undefined) => {
+    if (!file) return
+
+    clearScanImage()
+    setScanImage(file)
+    setScanPreview(URL.createObjectURL(file))
+    setScanError('')
+  }
+
+  const submitScan = async () => {
+    if (!scanImage || scanLoading) return
+
+    setScanLoading(true)
+    setScanError('')
+
+    try {
+      // Step 1: Try OCR locally first
+      const ocr = await extractText(scanImage)
+
+      let result: ScanResponse
+
+      if (ocr.isGoodEnough) {
+        // OCR worked - use cheap text API
+        result = await scanWithText(ocr.text, scanStep)
+      } else {
+        // OCR failed - fall back to vision API
+        result = await scanWithImage(scanImage, scanStep)
+      }
+
+      if (!result.success) {
+        throw new Error(result.error || 'Could not analyze this image.')
+      }
+
+      if (!result.data) {
+        setScanError(
+          scanStep === 'product'
+            ? 'The product name was not clear. Retake the front of the package in good light.'
+            : 'The expiry date was not clear. Retake the printed date area closer and in focus.',
+        )
+        return
+      }
+
+      if (scanStep === 'product' && result.scanState === 'product') {
+        const productName = getScannedProductName(result.data)
+        if (!productName) {
+          setScanError('The product name was not clear. Please take another photo.')
+          return
+        }
+
+        setScannedProduct(result.data)
+        setScanValue(productName)
+        clearScanImage()
+        setScanStep('expiry')
+        return
+      }
+
+      if (scanStep === 'expiry' && result.scanState === 'expiry') {
+        const productName = scannedProduct ? getScannedProductName(scannedProduct) : ''
+        if (!productName) {
+          setScanError('Product details were lost. Please restart this scan.')
+          return
+        }
+
+        const scannedExpiryDate = expiryRawToInputDate(result.data.expiry.raw)
+        const nextProduct: Product = {
+          id: crypto.randomUUID(),
+          name: productName,
+          code: productName.toUpperCase().replace(/\s+/g, '-'),
+          category,
+          expiryDate: scannedExpiryDate,
+          quantity: Number(quantity) || 1,
+          location: location.trim() || 'Unassigned',
+          createdAt: new Date().toISOString(),
+        }
+
+        setProducts((currentProducts) => [nextProduct, ...currentProducts])
+        setExpiryDate(scannedExpiryDate)
+        setFormMessage(`${nextProduct.name} was scanned and added to the tracker.`)
+        setScannerOpen(false)
+        resetScanner()
+        window.setTimeout(() => {
+          document.getElementById('inventory')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 100)
+      }
+    } catch (error) {
+      setScanError(
+        error instanceof TypeError
+          ? 'Could not reach the scanner service. Make sure the backend is running.'
+          : error instanceof Error
+            ? error.message
+            : 'Could not analyze this image. Please try again.',
+      )
+    } finally {
+      setScanLoading(false)
+    }
+  }
+
   return (
     <div className="site-shell">
       <header className="topbar">
@@ -435,9 +688,9 @@ const App = () => {
             </p>
 
             <div className="hero-actions">
-              <a className="primary-link" href="#tracker">
+              <button className="primary-link" type="button" onClick={openScanner}>
                 Start scanning
-              </a>
+              </button>
               <button className="ghost-button" type="button" onClick={handleUseDemoScan}>
                 Fill demo scan
               </button>
@@ -549,6 +802,15 @@ const App = () => {
             </div>
 
             <div className="scanner-form">
+              <button className="scan-launch-button field-wide" type="button" onClick={openScanner}>
+                <Camera size={20} aria-hidden="true" />
+                Scan product with camera
+              </button>
+
+              <div className="scan-divider field-wide">
+                <span>or add manually</span>
+              </div>
+
               <label className="field-wide">
                 <span>Product scan</span>
                 <input
@@ -743,6 +1005,99 @@ const App = () => {
           </div>
         </section>
       </main>
+
+      {scannerOpen ? (
+        <div className="scanner-overlay" role="dialog" aria-modal="true" aria-labelledby="scanner-title">
+          <div className="scanner-dialog">
+            <div className="scanner-dialog-header">
+              <div>
+                <p className="eyebrow">Camera scan</p>
+                <h2 id="scanner-title">{scanStep === 'product' ? 'Show the product front' : 'Show the expiry date'}</h2>
+              </div>
+              <button className="scanner-close" type="button" onClick={closeScanner} aria-label="Close scanner">
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="scan-progress" aria-label={`Step ${scanStep === 'product' ? 1 : 2} of 2`}>
+              <div className="scan-progress-item complete">
+                <span>{scanStep === 'expiry' ? <Check size={16} /> : '1'}</span>
+                <strong>Product</strong>
+              </div>
+              <div className="scan-progress-line" data-complete={scanStep === 'expiry'} />
+              <div className={`scan-progress-item ${scanStep === 'expiry' ? 'active' : ''}`}>
+                <span>2</span>
+                <strong>Expiry</strong>
+              </div>
+            </div>
+
+            {scanStep === 'expiry' && scannedProduct ? (
+              <div className="recognized-product">
+                <Check size={18} aria-hidden="true" />
+                <div>
+                  <span>Product recognized</span>
+                  <strong>{getScannedProductName(scannedProduct)}</strong>
+                </div>
+              </div>
+            ) : (
+              <p className="scanner-guidance">
+                Keep the brand and product name inside the frame. Use good light and avoid glare.
+              </p>
+            )}
+
+            {scanStep === 'expiry' ? (
+              <p className="scanner-guidance">
+                Find the EXP, use-by, or best-before print and take a close, focused photo.
+              </p>
+            ) : null}
+
+            <div className={`camera-capture-container ${scanPreview ? 'has-preview' : ''}`}>
+              {scanPreview ? (
+                <img src={scanPreview} className="camera-preview-img" alt={`${scanStep} capture preview`} />
+              ) : (
+                <div className="video-stream-wrapper">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="camera-video-stream"
+                  />
+                  <div className="camera-overlay-box">
+                    <div className="scanner-target-reticle" />
+                  </div>
+                  <button type="button" className="capture-shutter-button" onClick={captureFrame} aria-label="Capture photo">
+                    <span className="shutter-inner" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {scanError ? <p className="scanner-error">{scanError}</p> : null}
+
+            <div className="scanner-actions">
+              {scanImage ? (
+                <button className="secondary-button" type="button" onClick={clearScanImage} disabled={scanLoading}>
+                  <RotateCcw size={17} aria-hidden="true" />
+                  Retake
+                </button>
+              ) : null}
+              <button className="add-button" type="button" onClick={submitScan} disabled={!scanImage || scanLoading}>
+                {scanLoading ? <LoaderCircle className="scanner-spinner" size={19} /> : <Camera size={19} />}
+                {scanLoading
+                  ? 'Reading image...'
+                  : scanStep === 'product'
+                    ? 'Read product'
+                    : 'Read expiry & add'}
+              </button>
+            </div>
+
+            <p className="scanner-transaction-note">
+              Nothing is added until both the product and expiry date are successfully read.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
