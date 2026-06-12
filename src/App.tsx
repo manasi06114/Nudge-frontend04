@@ -1006,6 +1006,17 @@ const App = () => {
         </section>
       </main>
 
+      <button
+        className="bottom-camera-button"
+        type="button"
+        onClick={openScanner}
+        aria-label="Open camera scanner"
+      >
+        <span className="bottom-camera-button-inner">
+          <Camera size={27} strokeWidth={2.4} aria-hidden="true" />
+        </span>
+      </button>
+
       {scannerOpen ? (
         <div className="scanner-overlay" role="dialog" aria-modal="true" aria-labelledby="scanner-title">
           <div className="scanner-dialog">
