@@ -305,6 +305,7 @@ const App = () => {
           if (blob) {
             const file = new File([blob], `${scanStep}.jpg`, { type: 'image/jpeg' })
             handleScanImageChange(file)
+            submitScan(file)
           }
         },
         'image/jpeg',
@@ -570,15 +571,16 @@ const App = () => {
     setScanError('')
   }
 
-  const submitScan = async () => {
-    if (!scanImage || scanLoading) return
+  const submitScan = async (fileToScan?: File) => {
+    const file = fileToScan || scanImage
+    if (!file || scanLoading) return
 
     setScanLoading(true)
     setScanError('')
 
     try {
       // Step 1: Try OCR locally first
-      const ocr = await extractText(scanImage)
+      const ocr = await extractText(file)
 
       let result: ScanResponse
 
@@ -587,7 +589,7 @@ const App = () => {
         result = await scanWithText(ocr.text, scanStep)
       } else {
         // OCR failed - fall back to vision API
-        result = await scanWithImage(scanImage, scanStep)
+        result = await scanWithImage(file, scanStep)
       }
 
       if (!result.success) {
@@ -1093,7 +1095,7 @@ const App = () => {
                   Retake
                 </button>
               ) : null}
-              <button className="add-button" type="button" onClick={submitScan} disabled={!scanImage || scanLoading}>
+              <button className="add-button" type="button" onClick={() => submitScan()} disabled={!scanImage || scanLoading}>
                 {scanLoading ? <LoaderCircle className="scanner-spinner" size={19} /> : <Camera size={19} />}
                 {scanLoading
                   ? 'Reading image...'
