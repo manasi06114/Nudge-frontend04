@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
-import { Camera, Check, LoaderCircle, RotateCcw, X } from 'lucide-react'
+import { Camera, Check, LoaderCircle, LogOut, RotateCcw, X, Home, Library, Bell, HelpCircle } from 'lucide-react'
 import { useOCR } from './hooks/useOCR'
 import { scanWithText, scanWithImage } from './services/scanService'
 
@@ -210,6 +210,7 @@ const getScannedProductName = ({ brand, product }: ScanProductData) => {
 const App = () => {
   const { extractText } = useOCR()
   const [products, setProducts] = useState<Product[]>(readStoredProducts)
+  const [activeTab, setActiveTab] = useState<'home' | 'shelf' | 'notifications' | 'help'>('home')
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [scanValue, setScanValue] = useState('')
   const [expiryDate, setExpiryDate] = useState('')
@@ -225,7 +226,7 @@ const App = () => {
   const [filterMode, setFilterMode] = useState<FilterMode>('all')
   const [sortMode, setSortMode] = useState<SortMode>('urgency')
   const [formMessage, setFormMessage] = useState('')
-  const [copiedList, setCopiedList] = useState(false)
+
   const [scannerOpen, setScannerOpen] = useState(false)
   const [scanStep, setScanStep] = useState<ScanStep>('product')
   const [scanImage, setScanImage] = useState<File | null>(null)
@@ -371,8 +372,6 @@ const App = () => {
   }, [computedProducts])
 
   const nextFocus = computedProducts[0]
-  const actionQueue = computedProducts.filter((product) => product.daysLeft <= 3)
-  const lowStockProducts = computedProducts.filter((product) => product.quantity <= LOW_STOCK_THRESHOLD)
 
   useEffect(() => {
     const syncAlerts = () => {
@@ -512,22 +511,7 @@ const App = () => {
     URL.revokeObjectURL(url)
   }
 
-  const handleCopyShoppingList = async () => {
-    const listItems = lowStockProducts.map((product) => `${product.name} (${product.quantity} left)`).join('\n')
 
-    if (!listItems) {
-      setCopiedList(false)
-      return
-    }
-
-    try {
-      await navigator.clipboard.writeText(listItems)
-      setCopiedList(true)
-      window.setTimeout(() => setCopiedList(false), 1800)
-    } catch {
-      setCopiedList(false)
-    }
-  }
 
   const handleUseDemoScan = () => {
     setScanValue('Vitamin C Serum')
@@ -665,359 +649,458 @@ const App = () => {
       <header className="topbar">
         <a className="brand" href="#top" aria-label="Nudge home">
           <img src="/NUDGE%20LOGO.png" alt="NUDGE logo" />
-          <span>NUDGE</span>
+          <span>Nudge</span>
         </a>
 
-        <nav aria-label="Primary navigation">
-          <a href="#tracker">Tracker</a>
-          <a href="#alerts">Alerts</a>
-          <a href="#inventory">Inventory</a>
-        </nav>
-
-        <button className="topbar-action" type="button" onClick={handlePermissionRequest}>
-          {permissionState === 'granted' ? 'Alerts on' : 'Enable alerts'}
-        </button>
+        <div className="topbar-account">
+          <button className="account-chip" type="button" onClick={handlePermissionRequest} title={permissionState === 'granted' ? 'Notification alerts active' : 'Enable notifications'}>
+            <span>N</span>
+          </button>
+          <button className="logout-button" type="button" aria-label="Log out" onClick={() => setFormMessage('Logging out demo user...')}>
+            <LogOut size={20} aria-hidden="true" />
+          </button>
+        </div>
       </header>
 
       <main id="top">
-        <section className="hero-section">
-          <div className="hero-copy">
-            <p className="eyebrow">Expiry intelligence for every shelf</p>
-            <h1>Nudge</h1>
-            <p>
-              Scan a product, save its expiry date, and keep your inventory moving before anything gets wasted,
-              forgotten, or sold too late.
-            </p>
+        {activeTab === 'home' && (
+          <>
+            <section className="hero-section">
+              <div className="hero-copy">
+                <p className="eyebrow">Expiry intelligence for every shelf</p>
+                <h1>Nudge</h1>
+                <p>
+                  Scan a product, save its expiry date, and keep your inventory moving before anything gets wasted,
+                  forgotten, or sold too late.
+                </p>
 
-            <div className="hero-actions">
-              <button className="primary-link" type="button" onClick={openScanner}>
-                Start scanning
-              </button>
-              <button className="ghost-button" type="button" onClick={handleUseDemoScan}>
-                Fill demo scan
-              </button>
-            </div>
-          </div>
-
-          <div className="hero-console" aria-label="Nudge product snapshot">
-            <div className="phone-frame">
-              <div className="phone-header">
-                <span />
-                <strong>Nudge Scan</strong>
-                <span />
-              </div>
-              <div className="scan-window">
-                <div className="scan-line" />
-                <div className="barcode">
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                </div>
-              </div>
-              <div className="phone-card">
-                <span>Next expiry</span>
-                <strong>{nextFocus ? nextFocus.name : 'No product yet'}</strong>
-                <small>{nextFocus ? getStatusLabel(nextFocus.daysLeft) : 'Ready to scan'}</small>
-              </div>
-            </div>
-
-            <div className="floating-ticket ticket-alert">
-              <span>Warning</span>
-              <strong>{dashboard.expiringSoon + dashboard.overdue}</strong>
-              <small>items need a nudge</small>
-            </div>
-            <div className="floating-ticket ticket-safe">
-              <span>Clear</span>
-              <strong>{dashboard.safe}</strong>
-              <small>items are fresh</small>
-            </div>
-          </div>
-        </section>
-
-        <section className="command-center" aria-label="Operational focus">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Daily focus</p>
-              <h2>What needs attention first</h2>
-            </div>
-            <button className="secondary-button" type="button" onClick={handleCopyShoppingList}>
-              {copiedList ? 'Copied list' : 'Copy low-stock list'}
-            </button>
-          </div>
-
-          <div className="focus-grid">
-            <article className="focus-panel urgent-focus">
-              <span>Priority queue</span>
-              <strong>{actionQueue.length}</strong>
-              <p>{nextFocus ? `${nextFocus.name} - ${getStatusLabel(nextFocus.daysLeft)}` : 'No urgent products right now.'}</p>
-            </article>
-            <article className="focus-panel">
-              <span>Low stock</span>
-              <strong>{dashboard.lowStock}</strong>
-              <p>
-                {lowStockProducts.length > 0
-                  ? lowStockProducts
-                      .slice(0, 2)
-                      .map((product) => product.name)
-                      .join(', ')
-                  : 'Inventory levels look steady.'}
-              </p>
-            </article>
-            <article className="focus-panel">
-              <span>Coverage</span>
-              <strong>{dashboard.safe}</strong>
-              <p>items have more than a week before expiry.</p>
-            </article>
-          </div>
-        </section>
-
-        <section className="summary-band" aria-label="Inventory summary">
-          <article>
-            <span>Total tracked</span>
-            <strong>{dashboard.total}</strong>
-          </article>
-          <article>
-            <span>Expiring soon</span>
-            <strong>{dashboard.expiringSoon}</strong>
-          </article>
-          <article>
-            <span>Due today</span>
-            <strong>{dashboard.today}</strong>
-          </article>
-          <article>
-            <span>Overdue</span>
-            <strong>{dashboard.overdue}</strong>
-          </article>
-        </section>
-
-        <section className="tracker-grid" id="tracker">
-          <div className="tool-panel scanner-panel">
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">Scanner intake</p>
-                <h2>Capture product details</h2>
-              </div>
-              <span className="status-pill">Auto sorted</span>
-            </div>
-
-            <div className="scanner-form">
-              <button className="scan-launch-button field-wide" type="button" onClick={openScanner}>
-                <Camera size={20} aria-hidden="true" />
-                Scan product with camera
-              </button>
-
-              <div className="scan-divider field-wide">
-                <span>or add manually</span>
-              </div>
-
-              <label className="field-wide">
-                <span>Product scan</span>
-                <input
-                  type="text"
-                  placeholder="Barcode, batch code, or product name"
-                  value={scanValue}
-                  onChange={(event) => setScanValue(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      handleAddProduct()
-                    }
-                  }}
-                />
-              </label>
-
-              <label>
-                <span>Expiry date</span>
-                <input type="date" value={expiryDate} onChange={(event) => setExpiryDate(event.target.value)} />
-              </label>
-
-              <div className="quick-dates field-wide" aria-label="Quick expiry date presets">
-                {quickDateOptions.map((option) => (
-                  <button key={option.label} type="button" onClick={() => setExpiryDate(addDays(option.days))}>
-                    {option.label}
+                <div className="hero-actions">
+                  <button className="primary-link" type="button" onClick={openScanner}>
+                    Start scanning
                   </button>
-                ))}
+                  <button className="ghost-button" type="button" onClick={handleUseDemoScan}>
+                    Fill demo scan
+                  </button>
+                </div>
               </div>
 
-              <label>
-                <span>Category</span>
-                <select value={category} onChange={(event) => setCategory(event.target.value)}>
-                  {categories.map((categoryOption) => (
-                    <option key={categoryOption}>{categoryOption}</option>
+              <div className="hero-console" aria-label="Nudge product snapshot">
+                <div className="phone-frame">
+                  <div className="phone-header">
+                    <span />
+                    <strong>Nudge Scan</strong>
+                    <span />
+                  </div>
+                  <div className="scan-window">
+                    <div className="scan-line" />
+                    <div className="barcode">
+                      <span />
+                      <span />
+                      <span />
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                  </div>
+                  <div className="phone-card">
+                    <span>Next expiry</span>
+                    <strong>{nextFocus ? nextFocus.name : 'No product yet'}</strong>
+                    <small>{nextFocus ? getStatusLabel(nextFocus.daysLeft) : 'Ready to scan'}</small>
+                  </div>
+                </div>
+
+                <div className="floating-ticket ticket-alert">
+                  <span>Warning</span>
+                  <strong>{dashboard.expiringSoon + dashboard.overdue}</strong>
+                  <small>items need a nudge</small>
+                </div>
+                <div className="floating-ticket ticket-safe">
+                  <span>Clear</span>
+                  <strong>{dashboard.safe}</strong>
+                  <small>items are fresh</small>
+                </div>
+              </div>
+            </section>
+
+            <section className="summary-band" aria-label="Inventory summary">
+              <article>
+                <span>Total tracked</span>
+                <strong>{dashboard.total}</strong>
+              </article>
+              <article>
+                <span>Expiring soon</span>
+                <strong>{dashboard.expiringSoon}</strong>
+              </article>
+              <article>
+                <span>Due today</span>
+                <strong>{dashboard.today}</strong>
+              </article>
+              <article>
+                <span>Overdue</span>
+                <strong>{dashboard.overdue}</strong>
+              </article>
+            </section>
+
+            <section className="command-center" aria-label="Operational focus" style={{ marginTop: '28px' }}>
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Urgent Alert Watchlist</p>
+                  <h2>Nearest Expirations</h2>
+                </div>
+                <button className="secondary-button" type="button" onClick={() => setActiveTab('shelf')}>
+                  View all shelf inventory
+                </button>
+              </div>
+
+              <div className="product-list" style={{ marginTop: '16px' }}>
+                {computedProducts.length === 0 ? (
+                  <div className="empty-state">
+                    <p>No products tracked yet.</p>
+                    <span style={{ cursor: 'pointer', textDecoration: 'underline', color: '#8e22da' }} onClick={openScanner}>Click here to scan a product and get started!</span>
+                  </div>
+                ) : (
+                  computedProducts.slice(0, 5).map((product) => (
+                    <article className={`product-row ${product.severity}`} key={product.id}>
+                      <div className="product-status" aria-hidden="true" />
+                      <div className="product-main">
+                        <span>{product.category}</span>
+                        <h3>{product.name}</h3>
+                        <p>
+                          {product.code} / Qty {product.quantity} / {product.location}
+                        </p>
+                      </div>
+                      <div className="product-meta">
+                        <span>{formatDate(product.expiryDate)}</span>
+                        <strong>{getStatusLabel(product.daysLeft)}</strong>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+            </section>
+          </>
+        )}
+
+        {activeTab === 'shelf' && (
+          <>
+            <section className="tracker-grid" id="tracker" style={{ gridTemplateColumns: '1fr', margin: '28px 0' }}>
+              <div className="tool-panel scanner-panel">
+                <div className="section-heading">
+                  <div>
+                    <p className="eyebrow">Intake Form</p>
+                    <h2>Add product manually</h2>
+                  </div>
+                  <button className="secondary-button" type="button" onClick={openScanner}>
+                    Use Camera Scanner
+                  </button>
+                </div>
+
+                <div className="scanner-form">
+                  <label className="field-wide">
+                    <span>Product name / Batch code</span>
+                    <input
+                      type="text"
+                      placeholder="Barcode, batch code, or product name"
+                      value={scanValue}
+                      onChange={(event) => setScanValue(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          handleAddProduct()
+                        }
+                      }}
+                    />
+                  </label>
+
+                  <label>
+                    <span>Expiry date</span>
+                    <input type="date" value={expiryDate} onChange={(event) => setExpiryDate(event.target.value)} />
+                  </label>
+
+                  <div className="quick-dates field-wide" aria-label="Quick expiry date presets">
+                    {quickDateOptions.map((option) => (
+                      <button key={option.label} type="button" onClick={() => setExpiryDate(addDays(option.days))}>
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <label>
+                    <span>Category</span>
+                    <select value={category} onChange={(event) => setCategory(event.target.value)}>
+                      {categories.map((categoryOption) => (
+                        <option key={categoryOption}>{categoryOption}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    <span>Quantity</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={quantity}
+                      onChange={(event) => setQuantity(event.target.value)}
+                    />
+                  </label>
+
+                  <label>
+                    <span>Location</span>
+                    <input type="text" value={location} onChange={(event) => setLocation(event.target.value)} />
+                  </label>
+
+                  <button className="add-button field-wide" type="button" onClick={handleAddProduct}>
+                    Add to expiry list
+                  </button>
+
+                  {formMessage ? <p className="form-message field-wide">{formMessage}</p> : null}
+                </div>
+              </div>
+            </section>
+
+            <section className="inventory-section" id="inventory" style={{ margin: '28px 0 56px' }}>
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Shelf List</p>
+                  <h2>Products sorted by urgency</h2>
+                </div>
+                <div className="inventory-actions">
+                  <span className="status-pill">{filteredProducts.length} shown</span>
+                  <button className="secondary-button" type="button" onClick={handleExportCsv} disabled={filteredProducts.length === 0}>
+                    Export CSV
+                  </button>
+                </div>
+              </div>
+
+              <div className="inventory-toolbar" aria-label="Inventory tools">
+                <label className="search-field">
+                  <span>Search</span>
+                  <input
+                    type="search"
+                    placeholder="Find by name, code, category, or location"
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                  />
+                </label>
+
+                <label>
+                  <span>Sort</span>
+                  <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
+                    <option value="urgency">Urgency</option>
+                    <option value="name">Name</option>
+                    <option value="quantity">Quantity</option>
+                  </select>
+                </label>
+
+                <div className="filter-tabs" role="tablist" aria-label="Filter products">
+                  {filterOptions.map((option) => (
+                    <button
+                      aria-selected={filterMode === option.value}
+                      className={filterMode === option.value ? 'active' : ''}
+                      key={option.value}
+                      onClick={() => setFilterMode(option.value)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
                   ))}
-                </select>
-              </label>
+                </div>
+              </div>
 
-              <label>
-                <span>Quantity</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={quantity}
-                  onChange={(event) => setQuantity(event.target.value)}
-                />
-              </label>
+              <div className="product-list">
+                {filteredProducts.length === 0 ? (
+                  <div className="empty-state">
+                    <p>No products match this view.</p>
+                    <span>Try clearing search or switching filters.</span>
+                  </div>
+                ) : (
+                  filteredProducts.map((product) => (
+                    <article className={`product-row ${product.severity}`} key={product.id}>
+                      <div className="product-status" aria-hidden="true" />
 
-              <label>
-                <span>Location</span>
-                <input type="text" value={location} onChange={(event) => setLocation(event.target.value)} />
-              </label>
+                      <div className="product-main">
+                        <span>{product.category}</span>
+                        <h3>{product.name}</h3>
+                        <p>
+                          {product.code} / Qty {product.quantity} / {product.location}
+                        </p>
+                        {product.quantity <= LOW_STOCK_THRESHOLD ? <em>Low stock</em> : null}
+                      </div>
 
-              <button className="add-button field-wide" type="button" onClick={handleAddProduct}>
-                Add to expiry list
-              </button>
+                      <div className="product-meta">
+                        <span>{formatDate(product.expiryDate)}</span>
+                        <strong>{getStatusLabel(product.daysLeft)}</strong>
+                      </div>
 
-              {formMessage ? <p className="form-message field-wide">{formMessage}</p> : null}
-            </div>
-          </div>
+                      <div className="row-actions">
+                        <button
+                          aria-label={`Use one ${product.name}`}
+                          className="icon-button"
+                          type="button"
+                          onClick={() => handleQuantityChange(product.id, product.quantity - 1)}
+                        >
+                          -
+                        </button>
+                        <button
+                          aria-label={`Restock ${product.name}`}
+                          className="icon-button"
+                          type="button"
+                          onClick={() => handleQuantityChange(product.id, product.quantity + 1)}
+                        >
+                          +
+                        </button>
+                        <button type="button" className="remove-button" onClick={() => handleDuplicateProduct(product)}>
+                          Copy
+                        </button>
+                        <button type="button" className="remove-button danger" onClick={() => handleRemoveProduct(product.id)}>
+                          Remove
+                        </button>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+            </section>
+          </>
+        )}
 
-          <aside className="tool-panel alert-panel" id="alerts">
+        {activeTab === 'notifications' && (
+          <section className="tracker-grid" style={{ gridTemplateColumns: '1fr', margin: '28px 0 56px' }}>
+            <aside className="tool-panel alert-panel" id="alerts" style={{ minHeight: '400px' }}>
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Live warnings</p>
+                  <h2>Notification Feed</h2>
+                </div>
+                <span className="status-pill subtle">{permissionState}</span>
+              </div>
+
+              <div className="alert-feed" style={{ display: 'grid', gap: '12px' }}>
+                {alerts.length === 0 ? (
+                  <div className="empty-state" style={{ padding: '60px 20px' }}>
+                    <p>No alerts received yet.</p>
+                    <span>Warnings will appear here when products enter the watch windows.</span>
+                  </div>
+                ) : (
+                  alerts.map((alert) => (
+                    <article className={`alert-entry ${alert.stage}`} key={`${alert.productId}-${alert.stage}`} style={{ margin: 0 }}>
+                      <span>{warningLabels[alert.stage]}</span>
+                      <strong>{alert.label}</strong>
+                      <small>
+                        {new Date(alert.firedAt).toLocaleDateString()} at {new Date(alert.firedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </small>
+                    </article>
+                  ))
+                )}
+              </div>
+            </aside>
+          </section>
+        )}
+
+        {activeTab === 'help' && (
+          <section className="tool-panel" style={{ margin: '28px 0 56px', minHeight: '450px' }}>
             <div className="section-heading">
               <div>
-                <p className="eyebrow">Live warnings</p>
-                <h2>Notification feed</h2>
+                <p className="eyebrow">Support & Guidelines</p>
+                <h2>Help Center</h2>
               </div>
-              <span className="status-pill subtle">{permissionState}</span>
             </div>
 
-            <div className="alert-feed">
-              {alerts.length === 0 ? (
-                <div className="empty-state compact">
-                  <p>Warnings will appear here when products enter the 7, 3, 1, today, or overdue window.</p>
-                </div>
-              ) : (
-                alerts.map((alert) => (
-                  <article className={`alert-entry ${alert.stage}`} key={`${alert.productId}-${alert.stage}`}>
-                    <span>{warningLabels[alert.stage]}</span>
-                    <strong>{alert.label}</strong>
-                    <small>
-                      {new Date(alert.firedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </small>
-                  </article>
-                ))
-              )}
-            </div>
-          </aside>
-        </section>
-
-        <section className="inventory-section" id="inventory">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Expiry list</p>
-              <h2>Products sorted by urgency</h2>
-            </div>
-            <div className="inventory-actions">
-              <span className="status-pill">{filteredProducts.length} shown</span>
-              <button className="secondary-button" type="button" onClick={handleExportCsv} disabled={filteredProducts.length === 0}>
-                Export CSV
-              </button>
-            </div>
-          </div>
-
-          <div className="inventory-toolbar" aria-label="Inventory tools">
-            <label className="search-field">
-              <span>Search</span>
-              <input
-                type="search"
-                placeholder="Find by name, code, category, or location"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-              />
-            </label>
-
-            <label>
-              <span>Sort</span>
-              <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
-                <option value="urgency">Urgency</option>
-                <option value="name">Name</option>
-                <option value="quantity">Quantity</option>
-              </select>
-            </label>
-
-            <div className="filter-tabs" role="tablist" aria-label="Filter products">
-              {filterOptions.map((option) => (
-                <button
-                  aria-selected={filterMode === option.value}
-                  className={filterMode === option.value ? 'active' : ''}
-                  key={option.value}
-                  onClick={() => setFilterMode(option.value)}
-                  type="button"
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="product-list">
-            {filteredProducts.length === 0 ? (
-              <div className="empty-state">
-                <p>No products match this view.</p>
-                <span>Try clearing search or switching filters.</span>
+            <div className="help-content-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px', marginTop: '24px' }}>
+              <div className="focus-panel" style={{ minHeight: 'auto' }}>
+                <span style={{ color: '#8e22da', fontSize: '0.85rem' }}>Step 1</span>
+                <h3 style={{ color: '#24142f', fontWeight: 800, fontSize: '1.2rem', margin: '10px 0 6px' }}>Product Capture</h3>
+                <p style={{ fontSize: '0.94rem', color: '#5c5267', lineHeight: '1.5' }}>
+                  Tap the camera icon in the bottom menu. Place the product name/logo clearly inside the frame and snap a photo.
+                </p>
               </div>
-            ) : (
-              filteredProducts.map((product) => (
-                <article className={`product-row ${product.severity}`} key={product.id}>
-                  <div className="product-status" aria-hidden="true" />
 
-                  <div className="product-main">
-                    <span>{product.category}</span>
-                    <h3>{product.name}</h3>
-                    <p>
-                      {product.code} / Qty {product.quantity} / {product.location}
-                    </p>
-                    {product.quantity <= LOW_STOCK_THRESHOLD ? <em>Low stock</em> : null}
-                  </div>
+              <div className="focus-panel" style={{ minHeight: 'auto' }}>
+                <span style={{ color: '#8e22da', fontSize: '0.85rem' }}>Step 2</span>
+                <h3 style={{ color: '#24142f', fontWeight: 800, fontSize: '1.2rem', margin: '10px 0 6px' }}>Date Intake</h3>
+                <p style={{ fontSize: '0.94rem', color: '#5c5267', lineHeight: '1.5' }}>
+                  Locate the expiration date print on the product, align it inside the reticle, and capture it. The AI will parse it.
+                </p>
+              </div>
 
-                  <div className="product-meta">
-                    <span>{formatDate(product.expiryDate)}</span>
-                    <strong>{getStatusLabel(product.daysLeft)}</strong>
-                  </div>
+              <div className="focus-panel" style={{ minHeight: 'auto' }}>
+                <span style={{ color: '#8e22da', fontSize: '0.85rem' }}>Step 3</span>
+                <h3 style={{ color: '#24142f', fontWeight: 800, fontSize: '1.2rem', margin: '10px 0 6px' }}>Alert Tracking</h3>
+                <p style={{ fontSize: '0.94rem', color: '#5c5267', lineHeight: '1.5' }}>
+                  Nudge triggers browser notifications automatically as dates approach (7d, 3d, 1d, same day, and overdue).
+                </p>
+              </div>
+            </div>
 
-                  <div className="row-actions">
-                    <button
-                      aria-label={`Use one ${product.name}`}
-                      className="icon-button"
-                      type="button"
-                      onClick={() => handleQuantityChange(product.id, product.quantity - 1)}
-                    >
-                      -
-                    </button>
-                    <button
-                      aria-label={`Restock ${product.name}`}
-                      className="icon-button"
-                      type="button"
-                      onClick={() => handleQuantityChange(product.id, product.quantity + 1)}
-                    >
-                      +
-                    </button>
-                    <button type="button" className="remove-button" onClick={() => handleDuplicateProduct(product)}>
-                      Copy
-                    </button>
-                    <button type="button" className="remove-button danger" onClick={() => handleRemoveProduct(product.id)}>
-                      Remove
-                    </button>
-                  </div>
-                </article>
-              ))
-            )}
-          </div>
-        </section>
+            <div style={{ marginTop: '36px', padding: '24px', borderRadius: '8px', background: 'rgba(142, 34, 218, 0.05)', border: '1px solid rgba(142, 34, 218, 0.12)' }}>
+              <h3 style={{ color: '#24142f', fontWeight: 800, marginBottom: '8px' }}>Need Additional Help?</h3>
+              <p style={{ color: '#5c5267', fontSize: '0.95rem' }}>
+                If you encounter any issues, need assistance, or want to suggest new features, please contact our support team.
+              </p>
+              <div style={{ marginTop: '16px' }}>
+                <a href="mailto:pujarimanasi12345@gmail.com" className="primary-link" style={{ textDecoration: 'none', padding: '10px 20px', borderRadius: '6px', fontSize: '0.9rem' }}>
+                  Contact Support (pujarimanasi12345@gmail.com)
+                </a>
+              </div>
+            </div>
+          </section>
+        )}
       </main>
 
-      <button
-        className="bottom-camera-button"
-        type="button"
-        onClick={openScanner}
-        aria-label="Open camera scanner"
-      >
-        <span className="bottom-camera-button-inner">
-          <Camera size={27} strokeWidth={2.4} aria-hidden="true" />
-        </span>
-      </button>
+      <nav className="bottom-navigation" aria-label="Bottom navigation">
+        <button
+          className={`bottom-navigation-item ${activeTab === 'home' ? 'active' : ''}`}
+          type="button"
+          onClick={() => setActiveTab('home')}
+          aria-label="Home"
+        >
+          <Home size={20} />
+          <span className="nav-label">Home</span>
+        </button>
+        <button
+          className={`bottom-navigation-item ${activeTab === 'shelf' ? 'active' : ''}`}
+          type="button"
+          onClick={() => setActiveTab('shelf')}
+          aria-label="Shelf"
+        >
+          <Library size={20} />
+          <span className="nav-label">Shelf</span>
+        </button>
+        <button
+          className="bottom-navigation-item camera-nav-btn"
+          type="button"
+          onClick={openScanner}
+          aria-label="Open camera scanner"
+        >
+          <Camera size={22} />
+          <span className="nav-label">Scan</span>
+        </button>
+        <button
+          className={`bottom-navigation-item ${activeTab === 'notifications' ? 'active' : ''}`}
+          type="button"
+          onClick={() => setActiveTab('notifications')}
+          aria-label="Notifications"
+        >
+          <div className="relative-container">
+            <Bell size={20} />
+            {alerts.length > 0 && (
+              <span className="navbar-badge">{alerts.length}</span>
+            )}
+          </div>
+          <span className="nav-label">Alerts</span>
+        </button>
+        <button
+          className={`bottom-navigation-item ${activeTab === 'help' ? 'active' : ''}`}
+          type="button"
+          onClick={() => setActiveTab('help')}
+          aria-label="Help Center"
+        >
+          <HelpCircle size={20} />
+          <span className="nav-label">Help</span>
+        </button>
+      </nav>
+
+
 
       {scannerOpen ? (
         <div className="scanner-overlay" role="dialog" aria-modal="true" aria-labelledby="scanner-title">
