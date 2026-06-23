@@ -223,7 +223,7 @@ const AuthView = () => {
           <img src="/NUDGE%20LOGO.png" alt="NUDGE logo" />
           <span>Nudge</span>
         </div>
-        {!Capacitor.isNativePlatform() && (
+        {Capacitor.getPlatform() === 'web' && (
           <a href="/Nudge.apk" download className="download-apk-btn" aria-label="Download APK for Android">
             <Download size={20} />
             <span className="tooltip-text">Download APK for Android</span>
@@ -879,7 +879,7 @@ const App = () => {
         </a>
 
         <div className="topbar-account" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {!Capacitor.isNativePlatform() && (
+          {Capacitor.getPlatform() === 'web' && (
             <a href="/Nudge.apk" download className="download-apk-btn" aria-label="Download APK for Android">
               <Download size={20} />
               <span className="tooltip-text">Download APK for Android</span>
