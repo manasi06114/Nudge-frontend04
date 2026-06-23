@@ -1785,33 +1785,32 @@ main {
   padding: 8px 12px;
   position: absolute;
   z-index: 100;
-  bottom: 130%; /* Position above the button */
-  left: 50%;
-  margin-left: -85px;
+  right: 130%; /* Position on the left side */
+  top: 50%;
+  transform: translateY(-50%) scale(0.95);
   opacity: 0;
   transition: opacity 0.2s, transform 0.2s;
-  transform: scale(0.95);
   font-size: 0.78rem;
   font-weight: 700;
   box-shadow: 0 6px 20px rgba(36, 20, 47, 0.25);
   pointer-events: none;
 }
 
-/* Tooltip arrow */
+/* Tooltip arrow pointing right */
 .download-apk-btn .tooltip-text::after {
   content: "";
   position: absolute;
-  top: 100%; /* At the bottom of the tooltip */
-  left: 50%;
-  margin-left: -6px;
+  top: 50%;
+  left: 100%; /* At the right edge of the tooltip */
+  margin-top: -6px;
   border-width: 6px;
   border-style: solid;
-  border-color: #24142f transparent transparent transparent;
+  border-color: transparent transparent transparent #24142f;
 }
 
 .download-apk-btn:hover .tooltip-text {
   visibility: visible;
   opacity: 1;
-  transform: scale(1);
+  transform: translateY(-50%) scale(1);
 }
 
