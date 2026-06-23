@@ -24,3 +24,5 @@ dist-ssr
 *.sw?
 .env
 
+# Android native build files
+android/

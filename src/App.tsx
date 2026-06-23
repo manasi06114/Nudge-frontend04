@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
-import { Camera, Check, LoaderCircle, LogOut, RotateCcw, X, Home, Library, Bell, HelpCircle } from 'lucide-react'
+import { Camera, Check, LoaderCircle, LogOut, RotateCcw, X, Home, Library, Bell, HelpCircle, Download } from 'lucide-react'
 import { useOCR } from './hooks/useOCR'
 import { scanWithText, scanWithImage } from './services/scanService'
 import { supabase } from './services/supabase'
+import { Capacitor } from '@capacitor/core'
+import { App as CapApp } from '@capacitor/app'
 import {
   fetchProducts,
   createProduct,
@@ -43,21 +45,21 @@ type ScanExpiryData = {
 
 type ScanResponse =
   | {
-      success: true
-      scanState: 'product'
-      data: ScanProductData | null
-      message?: string
-    }
+    success: true
+    scanState: 'product'
+    data: ScanProductData | null
+    message?: string
+  }
   | {
-      success: true
-      scanState: 'expiry'
-      data: { expiry: ScanExpiryData } | null
-      message?: string
-    }
+    success: true
+    scanState: 'expiry'
+    data: { expiry: ScanExpiryData } | null
+    message?: string
+  }
   | {
-      success: false
-      error: string
-    }
+    success: false
+    error: string
+  }
 
 const LOW_STOCK_THRESHOLD = 5
 
@@ -199,10 +201,13 @@ const AuthView = () => {
   const handleGoogleLogin = async () => {
     setError('')
     try {
+      const isNative = Capacitor.isNativePlatform()
+      const redirectTo = isNative ? 'nudgeapp://login-callback' : window.location.origin
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin,
+          redirectTo,
         },
       })
       if (error) throw error
@@ -213,11 +218,17 @@ const AuthView = () => {
 
   return (
     <div className="site-shell" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '40px 20px' }}>
-      <header className="topbar" style={{ position: 'relative', width: '100%', maxWidth: '440px', borderRadius: '16px', marginBottom: '24px', justifyContent: 'center' }}>
+      <header className="topbar" style={{ position: 'relative', width: '100%', maxWidth: '440px', borderRadius: '16px', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div className="brand" style={{ pointerEvents: 'none' }}>
           <img src="/NUDGE%20LOGO.png" alt="NUDGE logo" />
           <span>Nudge</span>
         </div>
+        {!Capacitor.isNativePlatform() && (
+          <a href="/Nudge.apk" download className="download-apk-btn" aria-label="Download APK for Android">
+            <Download size={20} />
+            <span className="tooltip-text">Download APK for Android</span>
+          </a>
+        )}
       </header>
 
       <main style={{ width: '100%', maxWidth: '440px', background: 'rgba(255, 255, 255, 0.9)', border: '1px solid rgba(84, 57, 105, 0.12)', borderRadius: '24px', padding: '32px', boxShadow: '0 20px 50px rgba(36, 20, 47, 0.15)', backdropFilter: 'blur(16px)' }}>
@@ -340,7 +351,37 @@ const App = () => {
       setSession(session)
     })
 
-    return () => subscription.unsubscribe()
+    // Listen for deep link events when app is opened via custom scheme (mobile OAuth redirect)
+    if (Capacitor.isNativePlatform()) {
+      CapApp.addListener('appUrlOpen', async (data: { url: string }) => {
+        const urlStr = data.url.replace('nudgeapp://login-callback', window.location.origin)
+        const url = new URL(urlStr)
+        const hash = url.hash
+        if (hash) {
+          const params = new URLSearchParams(hash.substring(1))
+          const accessToken = params.get('access_token')
+          const refreshToken = params.get('refresh_token')
+          if (accessToken && refreshToken) {
+            setAuthLoading(true)
+            const { error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            })
+            if (error) {
+              console.error('Error setting session from deep link:', error.message)
+            }
+            setAuthLoading(false)
+          }
+        }
+      })
+    }
+
+    return () => {
+      subscription.unsubscribe()
+      if (Capacitor.isNativePlatform()) {
+        CapApp.removeAllListeners()
+      }
+    }
   }, [])
 
   const loadProducts = async () => {
@@ -614,12 +655,16 @@ const App = () => {
     setScanError('')
 
     try {
+      console.log('OCR STARTED FOR FILE:', file.name, 'SIZE:', file.size);
       const ocr = await extractText(file)
+      console.log('OCR RESULT:', JSON.stringify(ocr));
       let result: ScanResponse
 
       if (ocr.isGoodEnough) {
+        console.log('OCR CONFIDENCE GOOD. CALLING scanWithText WITH TEXT:', ocr.text);
         result = await scanWithText(ocr.text, scanStep)
       } else {
+        console.log('OCR CONFIDENCE LOW OR FAILED. FALLING BACK TO scanWithImage WITH FILE SIZE:', file.size);
         result = await scanWithImage(file, scanStep)
       }
 
@@ -681,6 +726,14 @@ const App = () => {
         }, 100)
       }
     } catch (error) {
+      console.error("FULL SCAN ERROR:", error);
+
+      if (error instanceof Error) {
+        console.error("ERROR NAME:", error.name);
+        console.error("ERROR MESSAGE:", error.message);
+        console.error("ERROR STACK:", error.stack);
+      }
+
       setScanError(
         error instanceof TypeError
           ? 'Could not reach the scanner service. Make sure the backend is running.'
@@ -763,6 +816,12 @@ const App = () => {
         </a>
 
         <div className="topbar-account" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {!Capacitor.isNativePlatform() && (
+            <a href="/Nudge.apk" download className="download-apk-btn" aria-label="Download APK for Android">
+              <Download size={20} />
+              <span className="tooltip-text">Download APK for Android</span>
+            </a>
+          )}
           <div className="user-profile-chip" style={{ display: 'flex', alignItems: 'center' }}>
             {session.user.user_metadata?.avatar_url ? (
               <img
@@ -825,15 +884,15 @@ const App = () => {
                     <span />
                   </div>
                   <div className="scan-window">
-                     <div className="scan-line" />
-                     <div className="barcode">
+                    <div className="scan-line" />
+                    <div className="barcode">
                       <span />
                       <span />
                       <span />
                       <span />
                       <span />
                       <span />
-                     </div>
+                    </div>
                   </div>
                   <div className="phone-card">
                     <span>Next expiry</span>

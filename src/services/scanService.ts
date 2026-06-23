@@ -21,14 +21,32 @@ export async function scanWithText(text: string, scanState: 'product' | 'expiry'
  * @param imageBlob - Camera frame as Blob or File
  * @param scanState - "product" or "expiry"
  */
+// export async function scanWithImage(imageBlob: Blob | File, scanState: 'product' | 'expiry') {
+//   const formData = new FormData();
+//   formData.append('image', imageBlob, 'frame.jpg');
+//   formData.append('scanState', scanState);
+
+//   const response = await fetch(`${BASE_URL}/api/scan/image`, {
+//     method: 'POST',
+//     body: formData,
+//   });
+//   return response.json();
+// }
+
 export async function scanWithImage(imageBlob: Blob | File, scanState: 'product' | 'expiry') {
   const formData = new FormData();
+
   formData.append('image', imageBlob, 'frame.jpg');
   formData.append('scanState', scanState);
+
+  console.log("SCAN URL:", `${BASE_URL}/api/scan/image`);
+  console.log("IMAGE TYPE:", imageBlob?.constructor?.name);
+  console.log("IMAGE SIZE:", imageBlob?.size);
 
   const response = await fetch(`${BASE_URL}/api/scan/image`, {
     method: 'POST',
     body: formData,
   });
+
   return response.json();
 }

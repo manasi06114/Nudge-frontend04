@@ -1749,3 +1749,69 @@ main {
 .capture-shutter-button:hover .shutter-inner {
   transform: scale(0.95);
 }
+
+/* ── Download APK Button & Tooltip ──────────────────────────── */
+.download-apk-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(142, 34, 218, 0.07);
+  color: #8e22da;
+  border: 1.5px solid rgba(142, 34, 218, 0.16);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.download-apk-btn:hover {
+  background: #8e22da;
+  color: #ffffff;
+  border-color: #8e22da;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(142, 34, 218, 0.28);
+}
+
+.download-apk-btn .tooltip-text {
+  visibility: hidden;
+  width: 170px;
+  background-color: #24142f;
+  color: #ffffff;
+  text-align: center;
+  border-radius: 8px;
+  padding: 8px 12px;
+  position: absolute;
+  z-index: 100;
+  bottom: 130%; /* Position above the button */
+  left: 50%;
+  margin-left: -85px;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  transform: scale(0.95);
+  font-size: 0.78rem;
+  font-weight: 700;
+  box-shadow: 0 6px 20px rgba(36, 20, 47, 0.25);
+  pointer-events: none;
+}
+
+/* Tooltip arrow */
+.download-apk-btn .tooltip-text::after {
+  content: "";
+  position: absolute;
+  top: 100%; /* At the bottom of the tooltip */
+  left: 50%;
+  margin-left: -6px;
+  border-width: 6px;
+  border-style: solid;
+  border-color: #24142f transparent transparent transparent;
+}
+
+.download-apk-btn:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+  transform: scale(1);
+}
+
