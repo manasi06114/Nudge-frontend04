@@ -314,6 +314,69 @@ const AuthView = () => {
   )
 }
 
+const UserProfileAvatar = ({ session }: { session: any }) => {
+  const [imgFailed, setImgFailed] = useState(false)
+  const avatarUrl = session?.user?.user_metadata?.avatar_url
+  const email = session?.user?.email || 'User'
+  const initial = email[0].toUpperCase()
+
+  const getBackgroundColor = (str: string) => {
+    const colors = [
+      '#8e22da',
+      '#e056fd',
+      '#686de0',
+      '#30336b',
+      '#ff7979',
+      '#ff9f43',
+      '#1dd1a1',
+      '#0984e3'
+    ]
+    let hash = 0
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash)
+    }
+    const index = Math.abs(hash) % colors.length
+    return colors[index]
+  }
+
+  const bgColor = getBackgroundColor(email)
+
+  if (avatarUrl && !imgFailed) {
+    return (
+      <img
+        src={avatarUrl}
+        alt="User profile"
+        onError={() => setImgFailed(true)}
+        style={{
+          width: '32px',
+          height: '32px',
+          borderRadius: '50%',
+          border: '2px solid #8e22da',
+          objectFit: 'cover'
+        }}
+      />
+    )
+  }
+
+  return (
+    <div style={{
+      width: '32px',
+      height: '32px',
+      borderRadius: '50%',
+      background: bgColor,
+      color: '#ffffff',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontWeight: 'bold',
+      fontSize: '0.95rem',
+      border: `2px solid ${bgColor}`
+    }}>
+      {initial}
+    </div>
+  )
+}
+
 const App = () => {
   const { extractText } = useOCR()
   const [session, setSession] = useState<any>(null)
@@ -823,29 +886,7 @@ const App = () => {
             </a>
           )}
           <div className="user-profile-chip" style={{ display: 'flex', alignItems: 'center' }}>
-            {session.user.user_metadata?.avatar_url ? (
-              <img
-                src={session.user.user_metadata.avatar_url}
-                alt="User profile"
-                style={{ width: '32px', height: '32px', borderRadius: '50%', border: '2px solid #8e22da', objectFit: 'cover' }}
-              />
-            ) : (
-              <div style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '50%',
-                background: '#8e22da',
-                color: '#ffffff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 'bold',
-                fontSize: '0.95rem',
-                border: '2px solid #8e22da'
-              }}>
-                {(session.user.email || 'U')[0].toUpperCase()}
-              </div>
-            )}
+            <UserProfileAvatar session={session} />
           </div>
 
           <button className="logout-button" type="button" aria-label="Log out" onClick={() => supabase.auth.signOut()}>
